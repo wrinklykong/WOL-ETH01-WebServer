@@ -23,7 +23,7 @@ WebServer server(80);
 AsyncUDP Udp;
 
 // REPLACE with your mac address
-unsigned char target_mac_address[6] = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56};
+unsigned char target_mac_address[6] = {0xA8,0xA1,0x59,0x2E,0x5D,0x6E};
 unsigned char ff[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 unsigned char deviceMac[6] = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56};
 
@@ -33,7 +33,7 @@ int counter               = 0;
 /* WakeOnLan over UDP implementation */
 
 void sendMagicPacket() {
-  printf("Sending magic packet to %s", ff);
+  printf("Sending magic packet to %", ff);
   char packet[102];
   int i = 0;
   memcpy(packet, ff, 6);
@@ -79,6 +79,36 @@ void handleNotFound()
   server.send(404, F("text/plain"), message);
 }
 
+// wakes up device
+void handleWake() {
+  sendMagicPacket();
+
+  String html = F("Waking up your device! teehee <3 I love you babez");
+  server.send(200, F("text/plain"), html);
+}
+
+/* Functions for handling UDP packets */
+
+void handlePacket(AsyncUDPPacket packet) {
+  Serial.print("UDP Packet Type: ");
+  Serial.print(packet.isBroadcast() ? "Broadcast" : packet.isMulticast() ? "Multicast" : "Unicast");
+  Serial.print(", From: ");
+  Serial.print(packet.remoteIP());
+  Serial.print(":");
+  Serial.print(packet.remotePort());
+  Serial.print(", To: ");
+  Serial.print(packet.localIP());
+  Serial.print(":");
+  Serial.print(packet.localPort());
+  Serial.print(", Length: ");
+  Serial.print(packet.length());
+  Serial.print(", Data: ");
+  Serial.write(packet.data(), packet.length());
+  Serial.println();
+
+  packet.printf("Got %u bytes of data", packet.length());
+}
+
 void setup() {
   // Open serial, wait for port to open
   Serial.begin(115200);
@@ -106,21 +136,28 @@ void setup() {
   WT32_ETH01_waitForConnect();
   // Connection found ! Do things ...
 
+  // Set up the WebServer
   server.on(F("/"), handleRoot);      // sets basic IP to handleRoot
   server.on(F("/inline"), []() {      // inline fun defeinition for /inline call
     server.send(200, F("text/plain"), F("This works as well"));
   });
   server.onNotFound(handleNotFound);  // sets rest to handleNotFound handler
-
+  server.on(F("/wake"), handleWake);
   // Begins WebServer ...
   server.begin();
-
   Serial.print(F("HTTP EthernetWebServer is @ IP: "));
   Serial.println( ETH.localIP() );
 
+  // Begin UDP socket
   if (Udp.connect(timeServerIP, NTP_REQUEST_PORT))
   {
     Serial.println("UDP connected");
+  }
+  if ( Udp.listen(1234) ) {
+    Serial.print("UDP Listening on IP: ");
+    Serial.println(ETH.localIP());
+
+    Udp.onPacket(handlePacket);
   }
 
 }
@@ -128,9 +165,4 @@ void setup() {
 void loop() {
   // opens server up, functions uses server attributes for .on() calls
   server.handleClient();
-  if ( counter > 10000 ) {
-    sendMagicPacket();
-    counter = 0;
-  }
-  counter++;
 }
